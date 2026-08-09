@@ -1,5 +1,4 @@
-# -print("Hello, World!")
-100 + 200
+# -print("Hello, World!"）
 
 import random
 

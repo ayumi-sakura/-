@@ -1,1 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>インベーダーゲーム</title>
+<style>
+  /* ===== 見た目の設定 ===== */
+  :root {
+    --bg:      #0d0b1a;  /* 背景の濃い紺 */
+    --ink:     #e8e4f0;  /* 文字の色 */
+    --accent:  #7ce8c4;  /* 自機・アクセント */
+    --frame:   #2a2545;  /* 枠線 */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Courier New", monospace;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  h1 {
+    margin: 0;
+    font-size: 18px;
+    letter-spacing: 0.4em;
+    font-weight: normal;
+    color: var(--accent);
+  }
+  #info {
+    display: flex;
+    gap: 28px;
+    font-size: 14px;
+    letter-spacing: 0.1em;
+  }
+  canvas {
+    background: #060512;
+    border: 2px solid var(--frame);
+    /* 画面が小さいときは縮む */
+    max-width: 96vw;
+    height: auto;
+    image-rendering: pixelated;
+    touch-action: none;
+  }
+  #hint { font-size: 12px; opacity: 0.6; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
 
+<h1>INVADERS</h1>
+<div id="info">
+  <span>SCORE <b id="score">0</b></span>
+  <span>LIFE <b id="life">3</b></span>
+</div>
+<canvas id="game" width="480" height="560"></canvas>
+<div id="hint">← → で移動　スペースで発射</div>
+
+<script>
+// ============================================================
+//  インベーダーゲーム
+//  ぜんぶこの1ファイルの中で動きます。
+// ============================================================
+
+const canvas = document.getElementById("game");
+const ctx    = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+// ------------------------------------------------------------
+// ドット絵の定義
+// 1 のところだけ四角を塗ります。0 は塗りません。
+// ------------------------------------------------------------
+const INVADER_A = [
+  [0,0,1,0,0,0,0,0,1,0,0],
+  [0,0,0,1,0,0,0,1,0,0,0],
+  [0,0,1,1,1,1,1,1,1,0,0],
+  [0,1,1,0,1,1,1,0,1,1,0],
+  [1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,1,1,1,1,1,1,1,0,1],
+  [1,0,1,0,0,0,0,0,1,0,1],
+  [0,0,0,1,1,0,1,1,0,0,0],
+];
+const INVADER_B = [
+  [0,0,1,0,0,0,0,0,1,0,0],
+  [1,0,0,1,0,0,0,1,0,0,1],
+  [1,0,1,1,1,1,1,1,1,0,1],
+  [1,1,1,0,1,1,1,0,1,1,1],
+  [1,1,1,1,1,1,1,1,1,1,1],
+  [0,0,1,1,1,1,1,1,1,0,0],
+  [0,0,1,0,0,0,0,0,1,0,0],
+  [0,1,0,0,0,0,0,0,0,1,0],
+];
+const SHIP = [
+  [0,0,0,0,1,0,0,0,0],
+  [0,0,0,1,1,1,0,0,0],
+  [0,0,0,1,1,1,0,0,0],
+  [1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1],
+  [1,1,1,1,1,1,1,1,1],
+];
+
+// ドット絵を描く関数
+function drawSprite(pattern, x, y, dot, color) {
+  ctx.fillStyle = color;
+  for (let row = 0; row < pattern.length; row++) {
+    for (let col = 0; col < pattern[row].length; col++) {
+      if (pattern[row][col] === 1) {
+        ctx.fillRect(x + col * dot, y + row * dot, dot, dot);
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------
+// ゲームの状態をまとめて持っておく変数たち
+// ------------------------------------------------------------
+const DOT = 3;                       // ドット1個の大きさ
+const INVADER_W = 11 * DOT;          // インベーダーの横幅
+const INVADER_H = 8 * DOT;
+const ROWS = 5;                      // 何段
+const COLS = 9;                      // 1段に何匹
+
+let invaders   = [];   // インベーダーの配列
+let myBullets  = [];   // 自分の弾
+let enemyShots = [];   // 敵の弾
+let ship, score, life, direction, moveTimer, moveWait, state, frame;
+
+// 段ごとの色（上ほど高得点）
+const ROW_COLORS = ["#ff8fb1", "#ffd166", "#ffd166", "#9bb8ff", "#9bb8ff"];
+const ROW_SCORES = [30, 20, 20, 10, 10];
+
+// ゲームを最初の状態に戻す
+function reset() {
+  invaders = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      invaders.push({
+        x: 50 + c * (INVADER_W + 14),
+        y: 60 + r * (INVADER_H + 14),
+        row: r,
+        alive: true
+      });
+    }
+  }
+  myBullets  = [];
+  enemyShots = [];
+  ship       = { x: W / 2 - 13, y: H - 50, w: 9 * DOT, h: 6 * DOT, speed: 4 };
+  score      = 0;
+  life       = 3;
+  direction  = 1;      // 1 なら右へ、-1 なら左へ
+  moveTimer  = 0;
+  moveWait   = 30;     // 数字が小さいほど速い
+  frame      = 0;
+  state      = "playing";
+  updateInfo();
+}
+
+function updateInfo() {
+  document.getElementById("score").textContent = score;
+  document.getElementById("life").textContent  = life;
+}
+
+// ------------------------------------------------------------
+// キーボードの入力を受け取る
+// ------------------------------------------------------------
+const keys = {};
+document.addEventListener("keydown", e => {
+  keys[e.key] = true;
+  if (e.key === " ") {
+    e.preventDefault();          // スペースで画面が下にスクロールしないように
+    if (state === "playing") shoot();
+    else reset();                // ゲームオーバー後はスペースでやり直し
+  }
+});
+document.addEventListener("keyup", e => { keys[e.key] = false; });
+
+// 弾を撃つ（画面に3発まで）
+function shoot() {
+  if (myBullets.length < 3) {
+    myBullets.push({ x: ship.x + ship.w / 2 - 1, y: ship.y });
+  }
+}
+
+// スマホ・タブレット用：画面の左右をタッチで移動、タップで発射
+let touchDir = 0;
+canvas.addEventListener("pointerdown", e => {
+  if (state !== "playing") { reset(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) / rect.width * W;
+  touchDir = px < W / 2 ? -1 : 1;
+  shoot();
+});
+canvas.addEventListener("pointerup",     () => { touchDir = 0; });
+canvas.addEventListener("pointercancel", () => { touchDir = 0; });
+
+// ------------------------------------------------------------
+// 毎フレームの処理
+// ------------------------------------------------------------
+function update() {
+  frame++;
+
+  // --- 自機を動かす ---
+  if (keys["ArrowLeft"]  || touchDir === -1) ship.x -= ship.speed;
+  if (keys["ArrowRight"] || touchDir ===  1) ship.x += ship.speed;
+  if (ship.x < 0)          ship.x = 0;
+  if (ship.x > W - ship.w) ship.x = W - ship.w;
+
+  // --- インベーダーを動かす ---
+  // 毎フレームではなく moveWait フレームに1回だけ、カクッと動かす
+  moveTimer++;
+  if (moveTimer >= moveWait) {
+    moveTimer = 0;
+    const living = invaders.filter(v => v.alive);
+
+    // 端に着いたかどうか調べる
+    let hitEdge = false;
+    for (const v of living) {
+      if ((direction === 1  && v.x + INVADER_W >= W - 16) ||
+          (direction === -1 && v.x <= 16)) hitEdge = true;
+    }
+
+    if (hitEdge) {
+      direction *= -1;                         // 向きを反対に
+      for (const v of living) v.y += 16;       // 一段下がる
+    } else {
+      for (const v of living) v.x += 12 * direction;
+    }
+
+    // 残りが少なくなるほど速くなる
+    moveWait = Math.max(4, Math.floor(living.length / 2) + 4);
+
+    // 地上まで来られたら負け
+    for (const v of living) {
+      if (v.y + INVADER_H >= ship.y) state = "gameover";
+    }
+  }
+
+  // --- 敵が撃ってくる ---
+  const living = invaders.filter(v => v.alive);
+  if (living.length > 0 && frame % 40 === 0) {
+    const shooter = living[Math.floor(Math.random() * living.length)];
+    enemyShots.push({ x: shooter.x + INVADER_W / 2, y: shooter.y + INVADER_H });
+  }
+
+  // --- 自分の弾 ---
+  for (let i = myBullets.length - 1; i >= 0; i--) {
+    const b = myBullets[i];
+    b.y -= 8;
+    if (b.y < 0) { myBullets.splice(i, 1); continue; }
+
+    // インベーダーに当たったか
+    for (const v of invaders) {
+      if (!v.alive) continue;
+      if (b.x > v.x && b.x < v.x + INVADER_W &&
+          b.y > v.y && b.y < v.y + INVADER_H) {
+        v.alive = false;
+        score += ROW_SCORES[v.row];
+        myBullets.splice(i, 1);
+        updateInfo();
+        break;
+      }
+    }
+  }
+
+  // --- 敵の弾 ---
+  for (let i = enemyShots.length - 1; i >= 0; i--) {
+    const s = enemyShots[i];
+    s.y += 4;
+    if (s.y > H) { enemyShots.splice(i, 1); continue; }
+
+    // 自機に当たったか
+    if (s.x > ship.x && s.x < ship.x + ship.w &&
+        s.y > ship.y && s.y < ship.y + ship.h) {
+      enemyShots.splice(i, 1);
+      life--;
+      updateInfo();
+      if (life <= 0) state = "gameover";
+    }
+  }
+
+  // --- 全部たおしたらクリア ---
+  if (invaders.every(v => !v.alive)) state = "clear";
+}
+
+// ------------------------------------------------------------
+// 画面を描く
+// ------------------------------------------------------------
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // 地面のライン
+  ctx.fillStyle = "#2a2545";
+  ctx.fillRect(0, H - 18, W, 2);
+
+  // インベーダー（frame で絵を切り替えてパタパタさせる）
+  const pattern = Math.floor(frame / 24) % 2 === 0 ? INVADER_A : INVADER_B;
+  for (const v of invaders) {
+    if (v.alive) drawSprite(pattern, v.x, v.y, DOT, ROW_COLORS[v.row]);
+  }
+
+  // 自機
+  drawSprite(SHIP, ship.x, ship.y, DOT, "#7ce8c4");
+
+  // 弾
+  ctx.fillStyle = "#ffffff";
+  for (const b of myBullets)  ctx.fillRect(b.x, b.y, 2, 10);
+  ctx.fillStyle = "#ff8fb1";
+  for (const s of enemyShots) ctx.fillRect(s.x, s.y, 2, 8);
+
+  // 終わったときのメッセージ
+  if (state !== "playing") {
+    ctx.fillStyle = "rgba(6,5,18,0.82)";
+    ctx.fillRect(0, H / 2 - 60, W, 120);
+    ctx.textAlign = "center";
+    ctx.fillStyle = state === "clear" ? "#7ce8c4" : "#ff8fb1";
+    ctx.font = "26px 'Courier New', monospace";
+    ctx.fillText(state === "clear" ? "GAME CLEAR" : "GAME OVER", W / 2, H / 2 - 8);
+    ctx.fillStyle = "#e8e4f0";
+    ctx.font = "13px 'Courier New', monospace";
+    ctx.fillText("スペースキー / タップでもう一度", W / 2, H / 2 + 26);
+  }
+}
+
+// ------------------------------------------------------------
+// ゲームのループ
+// ------------------------------------------------------------
+function loop() {
+  if (state === "playing") update();
+  else frame++;               // 終了後もパタパタだけ続ける
+  draw();
+  requestAnimationFrame(loop);
+}
+
+reset();
+loop();
+</script>
+
+</body>
+</html>

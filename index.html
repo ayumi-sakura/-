@@ -50,7 +50,15 @@
     touch-action: none;
   }
   #hint { font-size: 12px; opacity: 0.6; letter-spacing: 0.08em; }
-  #pad { display: none; gap: 12px; width: min(96vw, 480px); }
+  #ctrl { display: flex; gap: 10px; width: min(96vw, 480px); }
+  #ctrl button {
+    flex: 1; height: 44px; font-size: 15px; font-family: inherit; color: var(--ink);
+    background: var(--frame); border: 2px solid #3d3766; border-radius: 10px;
+    -webkit-tap-highlight-color: transparent; cursor: pointer;
+  }
+  #ctrl #bStart { background: var(--accent); color: #060512; font-weight: bold; }
+  #ctrl #bAuto.active { background: #ffd166; color: #060512; }
+  #pad { display: flex; gap: 12px; width: min(96vw, 480px); }
   #pad button {
     flex: 1; height: 64px; font-size: 24px; color: var(--ink);
     background: var(--frame); border: 2px solid #3d3766; border-radius: 12px;
@@ -58,7 +66,7 @@
   }
   #pad button.on { background: var(--accent); color: #060512; }
   #pad #bFire { flex: 1.6; }
-  @media (pointer: coarse) { #pad { display: flex; } #hint { display: none; } }
+  @media (pointer: coarse) { #hint { display: none; } }
 </style>
 </head>
 <body>
@@ -72,6 +80,11 @@
   <span>AUTO <b id="auto">OFF</b></span>
 </div>
 <canvas id="game" width="480" height="560"></canvas>
+<div id="ctrl">
+  <button id="bStart">スタート</button>
+  <button id="bAuto">オートファイア OFF</button>
+  <button id="bPause">ポーズ</button>
+</div>
 <div id="hint">← → / A D で移動　スペース / Z で発射（押しっぱなしで連射）　P でポーズ　F でオートファイア切替</div>
 <div id="pad">
   <button id="bLeft">◀</button>
@@ -248,6 +261,9 @@ let autoFire = false;
 function toggleAuto() {
   autoFire = !autoFire;
   document.getElementById("auto").textContent = autoFire ? "ON" : "OFF";
+  const b = document.getElementById("bAuto");
+  b.textContent = "オートファイア " + (autoFire ? "ON" : "OFF");
+  b.classList.toggle("active", autoFire);
 }
 
 // 弾を撃つ（画面に3発まで）
@@ -272,6 +288,21 @@ function bindButton(id, name) {
   el.addEventListener("contextmenu", e => e.preventDefault());
 }
 bindButton("bLeft", "left"); bindButton("bRight", "right"); bindButton("bFire", "fire");
+
+// 画面下のボタン（キーボードがなくても操作できる）
+function bindCtrl(id, fn) {
+  const el = document.getElementById(id);
+  el.addEventListener("mousedown", e => e.preventDefault());   // フォーカスを奪わない（スペースで誤作動しないように）
+  el.addEventListener("click", () => { fn(); el.blur(); });
+}
+bindCtrl("bStart", () => { if (state === "paused") togglePause(); else confirmAction(); });
+bindCtrl("bAuto",  toggleAuto);
+bindCtrl("bPause", togglePause);
+function updateCtrl() {
+  const label = { ready: "スタート", playing: "プレイ中", paused: "再開", clear: "次のステージへ", gameover: "もう一度" }[state];
+  const b = document.getElementById("bStart");
+  if (b.textContent !== label) b.textContent = label;
+}
 
 // 画面タップ：スタート / リスタート / ポーズ切り替え
 canvas.addEventListener("pointerdown", () => {
@@ -383,6 +414,7 @@ function update() {
 // ------------------------------------------------------------
 function draw() {
   ctx.clearRect(0, 0, W, H);
+  updateCtrl();
 
   // 地面のライン
   ctx.fillStyle = "#2a2545";

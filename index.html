@@ -69,9 +69,10 @@
   <span>LIFE <b id="life">3</b></span>
   <span>STAGE <b id="stage">1</b></span>
   <span>HI <b id="hi">0</b></span>
+  <span>AUTO <b id="auto">OFF</b></span>
 </div>
 <canvas id="game" width="480" height="560"></canvas>
-<div id="hint">← → / A D で移動　スペース / Z で発射（押しっぱなしで連射）　P でポーズ</div>
+<div id="hint">← → / A D で移動　スペース / Z で発射（押しっぱなしで連射）　P でポーズ　F でオートファイア切替</div>
 <div id="pad">
   <button id="bLeft">◀</button>
   <button id="bFire">発射</button>
@@ -229,6 +230,7 @@ document.addEventListener("keydown", e => {
   keys[k] = true;
   if (e.repeat) return;
   if (k === "p" || k === "Escape") togglePause();
+  else if (k === "f") toggleAuto();
   else if (k === " " || k === "Enter" || k === "z") {
     if (state === "playing") shoot();
     else if (state !== "paused") confirmAction();
@@ -239,6 +241,14 @@ document.addEventListener("keyup", e => {
 });
 // 別のタブに移ったら自動でポーズ
 window.addEventListener("blur", () => { if (state === "playing") state = "paused"; });
+
+// オートファイア：ON にすると押しっぱなしにしなくても撃ち続ける
+// （同時押しが効かないキーボード対策）
+let autoFire = false;
+function toggleAuto() {
+  autoFire = !autoFire;
+  document.getElementById("auto").textContent = autoFire ? "ON" : "OFF";
+}
 
 // 弾を撃つ（画面に3発まで）
 function shoot() {
@@ -284,7 +294,7 @@ function update() {
   // --- 押しっぱなしで連射 ---
   if (cooldown > 0) cooldown--;
   if (invincible > 0) invincible--;
-  if (keys[" "] || keys["z"] || keys["Enter"] || touch.fire) shoot();
+  if (autoFire || keys[" "] || keys["z"] || keys["Enter"] || touch.fire) shoot();
 
   // --- インベーダーを動かす ---
   // 毎フレームではなく moveWait フレームに1回だけ、カクッと動かす

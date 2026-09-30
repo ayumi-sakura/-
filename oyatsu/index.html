@@ -177,6 +177,9 @@
 
   const あそぶ秒数 = 30;
 
+  // 靴下の出やすさ（0.2 なら 5回に1回くらい。数字を大きくすると増えるよ）
+  const くつしたの出やすさ = 0.2;
+
   // ================================================
   // ここから下はゲームの仕組み
   // ================================================
@@ -259,8 +262,7 @@
   }
 
   function drop() {
-    // 8回に1回くらい靴下
-    const isSock = Math.random() < 0.12;
+    const isSock = Math.random() < くつしたの出やすさ;
     const el = document.createElement("div");
     el.className = "food";
     el.textContent = isSock ? たべられないもの : おやつ[Math.floor(Math.random() * おやつ.length)];

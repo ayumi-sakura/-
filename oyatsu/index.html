@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- ズームしないようにする指定 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>あじゅのおやつキャッチャー</title>
+<style>
+  :root {
+    --bg: #fdf6ec;
+    --ink: #4a3b2f;
+    --sky: #fff8ef;
+    --ground: #e9d6b8;
+    --accent: #e0655a;
+    --bubble: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", sans-serif;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  main {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 16px;
+    text-align: center;
+  }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  #msg { min-height: 1.6em; font-size: 15px; margin: 4px 0 6px; }
+  #info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    margin: 0 4px 6px;
+  }
+
+  /* 遊ぶところ */
+  #stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background: linear-gradient(var(--sky) 80%, var(--ground) 80%);
+    border-radius: 18px;
+    overflow: hidden;
+    touch-action: none;           /* 指で動かすときに画面がスクロールしないように */
+    cursor: pointer;
+  }
+  .food {
+    position: absolute;
+    font-size: 34px;
+    line-height: 1;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  /* あじゅ */
+  #ajyu {
+    position: absolute;
+    bottom: 6%;
+    width: 26%;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  #ajyu img { width: 100%; display: block; }
+  #ajyu.happy img { animation: hop .35s; }
+  @keyframes hop {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-10%); }
+  }
+  #ajyu.stuck img { filter: grayscale(.5); }
+
+  /* ふきだし */
+  .bubble {
+    position: absolute;
+    bottom: 104%;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background: var(--bubble);
+    border-radius: 12px;
+    padding: 4px 10px;
+    font-size: 13px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12);
+    animation: fade 1.1s forwards;
+  }
+  .bubble.long { animation-duration: 2.2s; }
+  @keyframes fade {
+    0% { opacity: 0; transform: translate(-50%, 4px); }
+    15%, 75% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; }
+  }
+  .heart {
+    position: absolute;
+    top: 10%;
+    right: 2%;
+    font-size: 18px;
+    color: var(--accent);
+    animation: heart .8s forwards;
+  }
+  @keyframes heart {
+    0% { opacity: 0; transform: scale(.4); }
+    30% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0; transform: translateY(-20px) scale(1); }
+  }
+
+  /* 最初と最後の画面 */
+  #cover {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: rgba(253, 246, 236, .88);
+    font-size: 17px;
+    padding: 20px;
+  }
+  #cover.hide { display: none; }
+  button {
+    font: inherit;
+    font-size: 16px;
+    padding: 10px 28px;
+    border: none;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+  }
+  .howto { font-size: 13px; opacity: .75; }
+</style>
+</head>
+<body>
+<main>
+  <h1>あじゅのおやつキャッチャー</h1>
+  <div id="msg"></div>
+  <div id="info">
+    <span id="count"></span>
+    <span id="time"></span>
+  </div>
+
+  <div id="stage">
+    <div id="ajyu"><img src="ajyu.png" alt="あじゅ"></div>
+    <div id="cover">
+      <div id="coverText"></div>
+      <button id="startBtn">はじめる</button>
+      <div class="howto">指でなぞるか、左右キーで動かしてね</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // ================================================
+  // ここから下は、まみちゃんが自由に書き換えていいところ
+  // 「" "」の中の文字だけ変えてね
+  // ================================================
+
+  const おやつ = ["🌰", "🍪", "🍊", "🍠", "🍎"];   // 落ちてくるおやつ
+  const たべられないもの = "🧦";                    // たまに落ちてくるもの
+
+  const セリフ = {
+    はじめ:       "おやつをキャッチしてね",
+    おやつ:       "もぐもぐ",
+    くつした1:    "あじゅ、それ食べられないよ",
+    くつした2:    "……。",
+    おわり:       "あじゅ、おなかいっぱい♡ ありがとう",
+    数えかた:     "あじゅのおやつ",
+    数の単位:     "こ",
+    もういちど:   "もう一回",
+  };
+
+  const あそぶ秒数 = 30;
+
+  // ================================================
+  // ここから下はゲームの仕組み
+  // ================================================
+
+  const stage    = document.getElementById("stage");
+  const ajyu     = document.getElementById("ajyu");
+  const msg      = document.getElementById("msg");
+  const countEl  = document.getElementById("count");
+  const timeEl   = document.getElementById("time");
+  const cover    = document.getElementById("cover");
+  const coverTxt = document.getElementById("coverText");
+  const startBtn = document.getElementById("startBtn");
+
+  let foods = [];
+  let ajyuX = 0.5;         // あじゅの位置（0が左はし、1が右はし）
+  let targetX = 0.5;
+  let count = 0;
+  let timeLeft = あそぶ秒数;
+  let playing = false;
+  let stuckUntil = 0;      // 靴下で固まっている時間
+  let spawnWait = 0;
+  let lastTime = 0;
+
+  function showCount() {
+    countEl.textContent = セリフ.数えかた + "　" + count + セリフ.数の単位;
+  }
+  function showTime() {
+    timeEl.textContent = "のこり " + Math.ceil(timeLeft) + "びょう";
+  }
+
+  function say(text, long) {
+    ajyu.querySelectorAll(".bubble").forEach(b => b.remove());
+    const b = document.createElement("div");
+    b.className = "bubble" + (long ? " long" : "");
+    b.textContent = text;
+    ajyu.appendChild(b);
+    setTimeout(() => b.remove(), long ? 2300 : 1200);
+  }
+
+  function heart() {
+    const h = document.createElement("div");
+    h.className = "heart";
+    h.textContent = "♡";
+    ajyu.appendChild(h);
+    setTimeout(() => h.remove(), 900);
+  }
+
+  function start() {
+    foods.forEach(f => f.el.remove());
+    foods = [];
+    count = 0;
+    timeLeft = あそぶ秒数;
+    ajyuX = targetX = 0.5;
+    stuckUntil = 0;
+    spawnWait = 0;
+    ajyu.classList.remove("stuck");
+    showCount();
+    showTime();
+    msg.textContent = セリフ.はじめ;
+    cover.classList.add("hide");
+    playing = true;
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function finish() {
+    playing = false;
+    foods.forEach(f => f.el.remove());
+    foods = [];
+    msg.textContent = "";
+    coverTxt.innerHTML = "";
+    const t1 = document.createElement("div");
+    t1.textContent = セリフ.おわり;
+    const t2 = document.createElement("div");
+    t2.textContent = セリフ.数えかた + "　" + count + セリフ.数の単位;
+    t2.style.fontSize = "14px";
+    coverTxt.append(t1, t2);
+    startBtn.textContent = セリフ.もういちど;
+    cover.classList.remove("hide");
+  }
+
+  function drop() {
+    // 8回に1回くらい靴下
+    const isSock = Math.random() < 0.12;
+    const el = document.createElement("div");
+    el.className = "food";
+    el.textContent = isSock ? たべられないもの : おやつ[Math.floor(Math.random() * おやつ.length)];
+    stage.appendChild(el);
+    foods.push({
+      el,
+      x: 0.08 + Math.random() * 0.84,
+      y: -0.05,
+      speed: 0.28 + Math.random() * 0.18,   // 1秒で画面の何割落ちるか
+      sock: isSock,
+    });
+  }
+
+  function loop(now) {
+    if (!playing) return;
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+
+    timeLeft -= dt;
+    showTime();
+    if (timeLeft <= 0) { finish(); return; }
+
+    // あじゅを指の位置へ近づける（固まっているときは動かない）
+    const stuck = now < stuckUntil;
+    ajyu.classList.toggle("stuck", stuck);
+    if (!stuck) ajyuX += (targetX - ajyuX) * Math.min(1, dt * 12);
+    ajyu.style.left = (ajyuX * 100) + "%";
+
+    // おやつを落とす
+    spawnWait -= dt;
+    if (spawnWait <= 0) {
+      drop();
+      spawnWait = 0.55 + Math.random() * 0.45;
+    }
+
+    foods = foods.filter(f => {
+      f.y += f.speed * dt;
+      f.el.style.left = (f.x * 100) + "%";
+      f.el.style.top  = (f.y * 100) + "%";
+
+      // あじゅの口のあたりに来たらキャッチ
+      if (f.y > 0.72 && f.y < 0.86 && Math.abs(f.x - ajyuX) < 0.12 && !stuck) {
+        f.el.remove();
+        if (f.sock) {
+          say(セリフ.くつした1, true);
+          setTimeout(() => { if (playing) say(セリフ.くつした2, true); }, 1300);
+          stuckUntil = now + 1500;
+        } else {
+          count++;
+          showCount();
+          say(セリフ.おやつ);
+          heart();
+          ajyu.classList.remove("happy");
+          void ajyu.offsetWidth;
+          ajyu.classList.add("happy");
+        }
+        return false;
+      }
+      // 取り損ねたら、そのまま消えるだけ
+      if (f.y > 1.05) { f.el.remove(); return false; }
+      return true;
+    });
+
+    requestAnimationFrame(loop);
+  }
+
+  // 指・マウスで動かす
+  function follow(e) {
+    const r = stage.getBoundingClientRect();
+    targetX = Math.max(0.1, Math.min(0.9, (e.clientX - r.left) / r.width));
+  }
+  stage.addEventListener("pointerdown", follow);
+  stage.addEventListener("pointermove", e => {
+    if (e.pointerType === "mouse" || e.buttons || e.pressure) follow(e);
+  });
+
+  // キーボードで動かす
+  document.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft")  targetX = Math.max(0.1, targetX - 0.15);
+    if (e.key === "ArrowRight") targetX = Math.min(0.9, targetX + 0.15);
+  });
+
+  startBtn.addEventListener("click", start);
+
+  // 最初の画面
+  coverTxt.textContent = セリフ.はじめ;
+  showCount();
+  timeEl.textContent = "";
+  ajyu.style.left = "50%";
+</script>
+</body>
+</html>

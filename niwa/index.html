@@ -129,7 +129,7 @@
 <div id="app">
   <div id="hud">
     <div class="pill">🌼 <span id="score">0</span></div>
-    <div class="pill">⏱ <span id="time">60</span></div>
+    <div class="pill">⏱ <span id="time">30</span></div>
   </div>
   <div id="timebar"><div id="timefill"></div></div>
   <p id="hint">じゃまなものをタップ！　あじゅはなでなで♡</p>
@@ -160,7 +160,7 @@
    あじゅのお庭を守って！  ―  設定はここをいじると変えられます
    ========================================================= */
 const CONFIG = {
-  GAME_SECONDS: 60,        // 制限時間（秒）
+  GAME_SECONDS: 30,        // 制限時間（秒）
   TRASH_SCORE: 10,         // 邪魔なものを片付けた時の得点
   AJYU_SCORE: 30,          // あじゅをなでた時のボーナス点
   AJYU_CHANCE: 0.16,       // 1回の出現で、あじゅが出る確率（0〜1）
@@ -369,9 +369,9 @@ function endGame() {
   $('finalScore').textContent = score;
   // 点数に合わせたやさしいメッセージ
   let msg = 'あじゅも大よろこび！またあそんでね♡';
-  if (score >= 500) msg = 'お庭がぴかぴか！あじゅも大満足だよ✨';
-  else if (score >= 300) msg = 'すてき！あじゅが「ありがとう」って言ってるよ♡';
-  else if (score >= 150) msg = 'いい調子！お庭がきれいになったね🌼';
+  if (score >= 250) msg = 'お庭がぴかぴか！あじゅも大満足だよ✨';
+  else if (score >= 150) msg = 'すてき！あじゅが「ありがとう」って言ってるよ♡';
+  else if (score >= 80) msg = 'いい調子！お庭がきれいになったね🌼';
   $('endMsg').textContent = msg;
   $('endDetail').textContent = `お片付け ${cleaned}こ ／ あじゅをなでなで ${petted}かい`;
   $('endScreen').classList.remove('hidden');

@@ -1,0 +1,390 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>あじゅのお庭を守って！</title>
+<style>
+  /* ===== 色の設定（ここを変えると雰囲気が変わります） ===== */
+  :root {
+    --sky: #d9f1ff;
+    --grass: #b9e8a0;
+    --grass-dark: #8fd37a;
+    --soil: #8a5a3c;
+    --soil-dark: #5e3b26;
+    --pink: #ff8fb1;
+    --text: #5a4636;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%;
+    font-family: "Hiragino Maru Gothic ProN", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    color: var(--text);
+    background: linear-gradient(var(--sky) 0%, #f3fbff 30%, var(--grass) 30%, var(--grass-dark) 100%);
+    overflow: hidden;
+    user-select: none; -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  #app {
+    max-width: 520px; height: 100%; margin: 0 auto;
+    display: flex; flex-direction: column;
+    padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    position: relative;
+  }
+
+  /* ===== 上のバー（得点・時間） ===== */
+  #hud { display: flex; justify-content: space-between; gap: 8px; }
+  .pill {
+    background: rgba(255,255,255,.85); border-radius: 999px;
+    padding: 6px 14px; font-weight: bold; font-size: 18px;
+    box-shadow: 0 3px 0 rgba(0,0,0,.08);
+  }
+  #timebar { height: 10px; border-radius: 6px; background: rgba(255,255,255,.7); margin: 8px 4px 0; overflow: hidden; }
+  #timefill { height: 100%; width: 100%; background: var(--pink); transition: width .25s linear; }
+  #hint {
+    text-align: center; font-size: 14px; margin: 6px 0 0; min-height: 20px; font-weight: bold;
+  }
+
+  /* ===== お庭（穴のならび） ===== */
+  #garden {
+    flex: 1; display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 10px; align-content: center; padding: 8px 0;
+    max-height: 560px; margin: auto 0;
+  }
+  .hole { position: relative; aspect-ratio: 1 / .95; }
+  /* 穴の後ろ側（土の楕円） */
+  .hole .dirt-back {
+    position: absolute; left: 6%; right: 6%; bottom: 8%; height: 34%;
+    background: radial-gradient(ellipse at center, var(--soil-dark) 55%, var(--soil) 100%);
+    border-radius: 50%; box-shadow: 0 4px 0 rgba(0,0,0,.12);
+  }
+  /* 出てくるものが見える窓（穴の上だけ見える） */
+  .hole .window {
+    position: absolute; left: 0; right: 0; top: 0; bottom: 8%;
+    overflow: hidden;
+    /* 下の穴の高さの半分まで見せて、穴から出てくる感じにする */
+    clip-path: inset(0 0 0 0);
+  }
+  .thing {
+    position: absolute; left: 50%; bottom: 0; width: 76%; aspect-ratio: 1;
+    transform: translate(-50%, 110%); transition: transform .22s cubic-bezier(.3,1.6,.5,1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(34px, 11vw, 58px); cursor: pointer;
+  }
+  .thing.up { transform: translate(-50%, 8%); }
+  /* 穴の前側のふち（ものが穴に入っているように見える） */
+  .hole .dirt-front {
+    position: absolute; left: 4%; right: 4%; bottom: 0; height: 22%;
+    background: linear-gradient(var(--soil) 0%, var(--soil-dark) 100%);
+    border-radius: 0 0 50% 50% / 0 0 100% 100%; pointer-events: none;
+  }
+  .hole.ajyu-in .dirt-back { box-shadow: 0 0 0 4px #fff7b0, 0 0 22px 8px #fff3a0; }
+
+  /* あじゅ（画像はそのまま表示。デザインは変えません） */
+  .ajyu img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+  /* あじゅは顔が穴の上にひょこっと見える高さで止まる（体は土のふちに隠れる） */
+  .thing.ajyu { width: 92%; }
+  .thing.ajyu.up { transform: translate(-50%, 14%); animation: peek 1.2s ease-in-out .3s infinite; }
+  .thing.ajyu.happy.up { transform: translate(-50%, 4%); animation: joy .5s ease-in-out infinite; }
+  @keyframes peek { 0%,100% { rotate: -3deg; } 50% { rotate: 3deg; } }
+  @keyframes joy { 0%,100% { scale: 1; rotate: -5deg; } 50% { scale: 1.1; rotate: 5deg; } }
+  .overlay .mascot img { width: 100%; height: 100%; object-fit: contain; }
+
+  /* ふきだし「あじゅだ！」 */
+  .bubble {
+    position: absolute; left: 50%; top: -4%; transform: translateX(-50%);
+    background: #fff; color: #e0608a; font-weight: bold; font-size: 13px;
+    padding: 3px 10px; border-radius: 999px; box-shadow: 0 2px 0 rgba(0,0,0,.1);
+    white-space: nowrap; pointer-events: none; animation: bubblein .4s ease-out; z-index: 3;
+  }
+  @keyframes bubblein { from { opacity: 0; transform: translate(-50%, 10px) scale(.5); } to { opacity: 1; } }
+
+  /* ふわっと浮かぶハート・点数 */
+  .float {
+    position: absolute; pointer-events: none; font-weight: bold; z-index: 10;
+    animation: floatup 1.1s ease-out forwards; text-align: center;
+  }
+  @keyframes floatup {
+    0% { opacity: 0; transform: translate(-50%, 0) scale(.5); }
+    20% { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -90px) scale(1.2); }
+  }
+
+  /* ===== 開始・終了の画面 ===== */
+  .overlay {
+    position: absolute; inset: 0; z-index: 50;
+    background: rgba(255, 250, 240, .93);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; gap: 10px;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 { margin: 0; font-size: 28px; line-height: 1.3; }
+  .overlay p { margin: 0; font-size: 16px; line-height: 1.7; }
+  .overlay .big { font-size: 56px; font-weight: bold; color: #e0608a; }
+  .overlay .mascot { width: 140px; height: 120px; }
+  button {
+    font: inherit; font-size: 22px; font-weight: bold; color: #fff;
+    background: var(--pink); border: 0; border-radius: 999px; padding: 14px 40px;
+    box-shadow: 0 5px 0 #e0608a; cursor: pointer; margin-top: 8px;
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 2px 0 #e0608a; }
+  #mute { position: absolute; right: 14px; bottom: 14px; z-index: 5; font-size: 20px; padding: 6px 12px; background: rgba(255,255,255,.8); box-shadow: none; color: inherit; margin: 0; }
+</style>
+<div id="app">
+  <div id="hud">
+    <div class="pill">🌼 <span id="score">0</span></div>
+    <div class="pill">⏱ <span id="time">60</span></div>
+  </div>
+  <div id="timebar"><div id="timefill"></div></div>
+  <p id="hint">じゃまなものをタップ！　あじゅはなでなで♡</p>
+
+  <div id="garden"></div>
+  <button id="mute" aria-label="音">🔔</button>
+
+  <!-- はじめの画面 -->
+  <div id="startScreen" class="overlay">
+    <div class="mascot" id="startMascot"></div>
+    <h1>あじゅのお庭を<br>守って！</h1>
+    <p>穴から出てくる🧦や🍂を<br>タップしてお片付け。<br>あじゅが出てきたら、やさしくなでてね♡</p>
+    <button id="startBtn">はじめる</button>
+  </div>
+
+  <!-- おわりの画面 -->
+  <div id="endScreen" class="overlay hidden">
+    <h1>おつかれさま！</h1>
+    <div class="big"><span id="finalScore">0</span><span style="font-size:22px">てん</span></div>
+    <p id="endMsg"></p>
+    <p id="endDetail" style="font-size:14px"></p>
+    <button id="retryBtn">もういっかい</button>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   あじゅのお庭を守って！  ―  設定はここをいじると変えられます
+   ========================================================= */
+const CONFIG = {
+  GAME_SECONDS: 60,        // 制限時間（秒）
+  TRASH_SCORE: 10,         // 邪魔なものを片付けた時の得点
+  AJYU_SCORE: 30,          // あじゅをなでた時のボーナス点
+  AJYU_CHANCE: 0.16,       // 1回の出現で、あじゅが出る確率（0〜1）
+  AJYU_STAY_MS: 1900,      // あじゅが顔を出している時間（ミリ秒）※長めでやさしい
+  TRASH_STAY_MS: [1100, 1700], // 邪魔ものが出ている時間（最短, 最長）
+  SPAWN_INTERVAL_MS: [850, 450], // 次に出るまでの間隔（ゲーム始め, ゲーム終わり）
+  MAX_AT_ONCE: 3,          // 同時に出る数の上限
+  TRASH_LIST: ['🧦', '🍂', '🍃', '🧤', '🩴', '🥤', '🧸'], // 邪魔ものの絵文字
+};
+
+/* ---- あじゅの絵。同じフォルダの ajyu.png を使います（差し替えたいときはこのファイルを入れ替え） ---- */
+const AJYU_IMG = '<img src="ajyu.png" alt="あじゅ" draggable="false">';
+
+/* =========================================================
+   ここから下はゲームのしくみ
+   ========================================================= */
+const $ = id => document.getElementById(id);
+const garden = $('garden');
+const HOLES = 9;                  // 穴の数（3×3）
+let holes = [];                   // 各穴の状態
+let score = 0, timeLeft = 0, running = false;
+let timers = [];                  // 動いているタイマー
+let spawnTimer = null, clockTimer = null;
+let cleaned = 0, petted = 0, sinceAjyu = 0;
+let muted = false;
+
+/* ---- 穴を作る ---- */
+function buildGarden() {
+  garden.innerHTML = '';
+  holes = [];
+  for (let i = 0; i < HOLES; i++) {
+    const el = document.createElement('div');
+    el.className = 'hole';
+    el.innerHTML = '<div class="dirt-back"></div><div class="window"><div class="thing"></div></div><div class="dirt-front"></div>';
+    garden.appendChild(el);
+    const thing = el.querySelector('.thing');
+    const h = { el, thing, kind: null, busy: false, hideTimer: null };
+    // タップ／クリック（pointerdownなのでスマホでも反応が速い）
+    el.addEventListener('pointerdown', e => { e.preventDefault(); onTap(h, e); });
+    holes.push(h);
+  }
+}
+
+/* ---- 音（かんたんなやさしい音。外部ファイル不要） ---- */
+let audioCtx = null;
+function beep(freqs, dur = 0.12, type = 'sine', vol = 0.12) {
+  if (muted) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    freqs.forEach((f, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      const t = audioCtx.currentTime + i * dur * 0.8;
+      o.type = type; o.frequency.value = f;
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + dur);
+    });
+  } catch (e) {}
+}
+const sndPop = () => beep([660, 880], 0.09);
+const sndAjyuAppear = () => beep([784, 988, 1175], 0.14, 'triangle');
+const sndAjyuHappy = () => beep([880, 1109, 1319, 1760], 0.13, 'triangle');
+
+/* ---- 穴から出す ---- */
+function spawn() {
+  if (!running) return;
+  const active = holes.filter(h => h.kind).length;
+  const free = holes.filter(h => !h.kind && !h.busy);
+  if (active < CONFIG.MAX_AT_ONCE && free.length) {
+    const h = free[Math.floor(Math.random() * free.length)];
+    // あじゅは、たまに出る。あまり長く出ないときは出やすくする
+    sinceAjyu++;
+    const ajyuNow = !holes.some(x => x.kind === 'ajyu') &&
+      (Math.random() < CONFIG.AJYU_CHANCE || sinceAjyu > 9);
+    if (ajyuNow) { sinceAjyu = 0; show(h, 'ajyu'); }
+    else show(h, 'trash');
+  }
+  // ゲームが進むほど、少しずつ出るのが早くなる
+  const p = 1 - timeLeft / CONFIG.GAME_SECONDS;
+  const [a, b] = CONFIG.SPAWN_INTERVAL_MS;
+  spawnTimer = setTimeout(spawn, a + (b - a) * p);
+}
+
+function show(h, kind) {
+  h.kind = kind;
+  const t = h.thing;
+  t.className = 'thing';
+  t.innerHTML = '';
+  if (kind === 'ajyu') {
+    t.classList.add('ajyu');
+    t.innerHTML = AJYU_IMG;
+    h.el.classList.add('ajyu-in');
+    // 「いた！」演出：光る穴・ふきだし・きらきら・やさしい音
+    const b = document.createElement('div');
+    b.className = 'bubble'; b.textContent = 'あじゅだ！';
+    h.el.appendChild(b); h.bubble = b;
+    sparkle(h, '✨', 4);
+    sndAjyuAppear();
+  } else {
+    const list = CONFIG.TRASH_LIST;
+    t.textContent = list[Math.floor(Math.random() * list.length)];
+  }
+  // ひょこっと上がる（描画後にクラスを付けてアニメーションさせる）
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('up')));
+  const stay = kind === 'ajyu' ? CONFIG.AJYU_STAY_MS
+    : CONFIG.TRASH_STAY_MS[0] + Math.random() * (CONFIG.TRASH_STAY_MS[1] - CONFIG.TRASH_STAY_MS[0]);
+  h.hideTimer = setTimeout(() => hide(h), stay);
+}
+
+/* ---- 穴にもどる（あじゅは逃しても減点なし） ---- */
+function hide(h, delay = 0) {
+  clearTimeout(h.hideTimer);
+  h.busy = true;
+  setTimeout(() => {
+    h.thing.classList.remove('up');
+    h.el.classList.remove('ajyu-in');
+    if (h.bubble) { h.bubble.remove(); h.bubble = null; }
+    h.kind = null;
+    setTimeout(() => { h.busy = false; h.thing.innerHTML = ''; h.thing.className = 'thing'; }, 260);
+  }, delay);
+}
+
+/* ---- タップされたとき ---- */
+function onTap(h, e) {
+  if (!running || !h.kind || h.tapped) return;
+  const rect = garden.getBoundingClientRect();
+  const hr = h.el.getBoundingClientRect();
+  const cx = hr.left + hr.width / 2 - rect.left;
+  const cy = hr.top + hr.height * 0.35 - rect.top;
+  if (h.kind === 'trash') {
+    addScore(CONFIG.TRASH_SCORE); cleaned++;
+    floatText('+' + CONFIG.TRASH_SCORE, cx, cy, '#5aa04a', 22);
+    sparkle(h, '⭐', 3);
+    sndPop();
+    hide(h);
+  } else {
+    // あじゅ：なでなで！ハートがふわっと、ボーナス点
+    h.tapped = true;
+    addScore(CONFIG.AJYU_SCORE); petted++;
+    h.thing.classList.add('happy');
+    if (h.bubble) h.bubble.textContent = 'うれしい♡';
+    floatText('+' + CONFIG.AJYU_SCORE, cx, cy - 10, '#e0608a', 28);
+    sparkle(h, '💗', 6);
+    sndAjyuHappy();
+    clearTimeout(h.hideTimer);
+    // よろこんでから、ゆっくり穴にもどる
+    hide(h, 900);
+    setTimeout(() => { h.tapped = false; }, 1300);
+  }
+}
+
+function addScore(n) { score += n; $('score').textContent = score; }
+
+/* ---- ふわっと出る文字・ハート ---- */
+function floatText(text, x, y, color, size) {
+  const d = document.createElement('div');
+  d.className = 'float';
+  d.textContent = text;
+  d.style.cssText = `left:${x}px; top:${y}px; color:${color}; font-size:${size}px; text-shadow:0 2px 0 #fff;`;
+  garden.style.position = 'relative';
+  garden.appendChild(d);
+  setTimeout(() => d.remove(), 1200);
+}
+function sparkle(h, emoji, n) {
+  const rect = garden.getBoundingClientRect();
+  const hr = h.el.getBoundingClientRect();
+  const cx = hr.left + hr.width / 2 - rect.left;
+  const cy = hr.top + hr.height * 0.3 - rect.top;
+  for (let i = 0; i < n; i++) {
+    setTimeout(() => {
+      const d = document.createElement('div');
+      d.className = 'float';
+      d.textContent = emoji;
+      d.style.cssText = `left:${cx + (Math.random() - .5) * hr.width * .6}px; top:${cy}px; font-size:${18 + Math.random() * 12}px; --dx:${(Math.random() - .5) * 50}px;`;
+      garden.appendChild(d);
+      setTimeout(() => d.remove(), 1200);
+    }, i * 90);
+  }
+}
+
+/* ---- ゲームの開始・終了 ---- */
+function startGame() {
+  score = 0; cleaned = 0; petted = 0; sinceAjyu = 5;
+  timeLeft = CONFIG.GAME_SECONDS;
+  $('score').textContent = 0;
+  $('time').textContent = timeLeft;
+  $('timefill').style.width = '100%';
+  buildGarden();
+  $('startScreen').classList.add('hidden');
+  $('endScreen').classList.add('hidden');
+  running = true;
+  clockTimer = setInterval(() => {
+    timeLeft--;
+    $('time').textContent = Math.max(timeLeft, 0);
+    $('timefill').style.width = (timeLeft / CONFIG.GAME_SECONDS * 100) + '%';
+    if (timeLeft <= 0) endGame();
+  }, 1000);
+  spawnTimer = setTimeout(spawn, 500);
+}
+
+function endGame() {
+  running = false;
+  clearInterval(clockTimer); clearTimeout(spawnTimer);
+  holes.forEach(h => clearTimeout(h.hideTimer));
+  $('finalScore').textContent = score;
+  // 点数に合わせたやさしいメッセージ
+  let msg = 'あじゅも大よろこび！またあそんでね♡';
+  if (score >= 500) msg = 'お庭がぴかぴか！あじゅも大満足だよ✨';
+  else if (score >= 300) msg = 'すてき！あじゅが「ありがとう」って言ってるよ♡';
+  else if (score >= 150) msg = 'いい調子！お庭がきれいになったね🌼';
+  $('endMsg').textContent = msg;
+  $('endDetail').textContent = `お片付け ${cleaned}こ ／ あじゅをなでなで ${petted}かい`;
+  $('endScreen').classList.remove('hidden');
+}
+
+$('startBtn').addEventListener('click', startGame);
+$('retryBtn').addEventListener('click', startGame);
+$('mute').addEventListener('click', () => {
+  muted = !muted; $('mute').textContent = muted ? '🔕' : '🔔';
+});
+// はじめの画面にあじゅを表示
+$('startMascot').innerHTML = AJYU_IMG;
+buildGarden();
+</script>
+
+</body></html>
